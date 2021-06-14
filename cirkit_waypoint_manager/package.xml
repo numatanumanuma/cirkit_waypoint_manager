@@ -12,7 +12,7 @@
   <author email="cirkit.infomation@gmail.com">CIR-KIT</author>
 
   <buildtool_depend>catkin</buildtool_depend>
-  <exec_depend>cirkit_waypoint_genarator</exec_depend>
+  <exec_depend>cirkit_waypoint_generator</exec_depend>
   <exec_depend>cirkit_waypoint_navigator</exec_depend>
 
   <export>
