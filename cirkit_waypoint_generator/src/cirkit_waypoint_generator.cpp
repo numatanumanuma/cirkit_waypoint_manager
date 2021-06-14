@@ -18,13 +18,12 @@
 #include <boost/shared_array.hpp>
 #include <boost/program_options.hpp>
 
-using namespace visualization_msgs;
+#include <geometry_msgs/PoseStamped.h>
 
+using namespace visualization_msgs;
 
 typedef boost::tokenizer<boost::char_separator<char> > tokenizer;
 boost::shared_ptr<interactive_markers::InteractiveMarkerServer> server;
-
-
 
 class CirkitWaypointGenerator
 {
@@ -38,6 +37,8 @@ public:
     odom_sub_ = nh_.subscribe<geometry_msgs::PoseWithCovarianceStamped>("/amcl_pose",
                               1,
                               &CirkitWaypointGenerator::addWaypoint, this);
+    // add
+    ndt_pose_sub_ = nh_.subscribe<geometry_msgs::PoseStamped>("/ndt_pose", 1, &CirkitWaypointGenerator::addWaypointNDT, this);
     clicked_sub_ = nh_.subscribe("clicked_point", 1, &CirkitWaypointGenerator::clickedPointCallback, this);
     reach_marker_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("/reach_threshold_markers", 1);
     waypoints_pub_ = nh_.advertise<cirkit_waypoint_manager_msgs::WaypointArray>("/waypoints", 1);
@@ -219,6 +220,22 @@ public:
     }
   }
 
+  /*
+   ndt_poseが使えるように
+  */
+  void addWaypointNDT(const geometry_msgs::PoseStamped::ConstPtr& ndt_pose)
+  {
+    geometry_msgs::PoseWithCovariance pose;
+    pose.pose = ndt_pose->pose;
+    double diff_dist = calculateDistance(pose);
+    double diff_yaw = calculateAngle(pose);
+    if(diff_dist > dist_th_ || diff_yaw > yaw_th_)
+    {
+      makeWaypointMarker(pose, 0, 3.0);
+      last_pose_ = pose;
+    }
+  }
+
   void publishWaypointCallback(const ros::TimerEvent&)
   {
     reach_marker_pub_.publish(reach_threshold_markers_);
@@ -268,6 +285,7 @@ private:
   ros::NodeHandle nh_;
   ros::Rate rate_;
   ros::Subscriber odom_sub_;
+  ros::Subscriber ndt_pose_sub_; // add
   ros::Subscriber clicked_sub_;
   ros::Publisher reach_marker_pub_;
   ros::Publisher waypoints_pub_;
