@@ -94,6 +94,7 @@ public:
     waypoint_marker.scale.y = 0.5;
     waypoint_marker.scale.z = 0.0;
     waypoint_marker.color.a = 0.7;
+    // waypointのarea_typeによって色変
     waypoint_marker.color.r = 0.05 + 1.0*(float)is_searching_area;;
     waypoint_marker.color.g = 0.80;
     waypoint_marker.color.b = 0.2;
