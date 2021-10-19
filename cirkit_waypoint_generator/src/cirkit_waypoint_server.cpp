@@ -31,7 +31,6 @@ public:
   {
     ros::NodeHandle n("~");
     waypoint_marker_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("/waypoint_markers", 1);
-    waypoint_number_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("/waypoint_numbers", 1);
   }
 
   void load(std::string waypoint_file)
@@ -40,7 +39,6 @@ public:
     boost::char_separator<char> sep("," ,"", boost::keep_empty_tokens);
     std::ifstream ifs(waypoint_file.c_str());
     std::string line;
-    int num = 0;
     while(ifs.good()){
       getline(ifs, line);
       if(line.empty()){ break; }
@@ -67,7 +65,6 @@ public:
         new_pose.pose.orientation.z = data[5];
         new_pose.pose.orientation.w = data[6];
         makeWaypointMarker(new_pose, (int)data[7], data[8]);
-        makeWaypointNumber(new_pose, num ++);
       }
     }
     ROS_INFO_STREAM(waypoint_box_count_ << "waypoints are loaded.");
@@ -80,27 +77,7 @@ public:
     tf::Matrix3x3(tfq).getRPY(roll, pitch, yaw);
   }
 
-  void makeWaypointNumber(const geometry_msgs::PoseWithCovariance new_pose, int number)
-  {
-    visualization_msgs::Marker waypoint_marker;
-    waypoint_marker.header.frame_id = "map";
-    waypoint_marker.header.stamp = ros::Time();
-    waypoint_marker.id = waypoint_text_count_;
-    waypoint_marker.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
-    waypoint_marker.action = visualization_msgs::Marker::ADD;
-    waypoint_marker.pose = new_pose.pose;
-    waypoint_marker.scale.x = 0.0;
-    waypoint_marker.scale.y = 0.0;
-    waypoint_marker.scale.z = 0.5;
-    waypoint_marker.color.a = 1.0;
-    waypoint_marker.color.r = 0.0;
-    waypoint_marker.color.g = 0.0;
-    waypoint_marker.color.b = 0.0;
-    waypoint_marker.text = std::to_string(number);
-    waypoint_num_markers.markers.push_back(waypoint_marker);
-    waypoint_number_pub_.publish(waypoint_num_markers);
-    waypoint_text_count_++;
-  }
+  
 
   
   void makeWaypointMarker(const geometry_msgs::PoseWithCovariance new_pose,
@@ -118,13 +95,9 @@ public:
     waypoint_marker.scale.z = 0.0;
     waypoint_marker.color.a = 0.7;
     // waypointのarea_typeによって色変
-    waypoint_marker.color.r = 0.05 + 1.0*(float)is_searching_area;
+    waypoint_marker.color.r = 0.05 + 1.0*(float)is_searching_area;;
     waypoint_marker.color.g = 0.80;
     waypoint_marker.color.b = 0.2;
-    if (is_searching_area == 2){
-      waypoint_marker.color.r = 0.05;
-      waypoint_marker.color.b = 1.0; 
-    }
     waypoint_arrow_markers_.markers.push_back(waypoint_marker);
     waypoint_marker_pub_.publish(waypoint_arrow_markers_);
     waypoint_box_count_++;
@@ -133,7 +106,6 @@ public:
   void publishWaypointCallback(const ros::TimerEvent&)
   {
     waypoint_marker_pub_.publish(waypoint_arrow_markers_);
-    waypoint_number_pub_.publish(waypoint_num_markers);
   }
 
   
@@ -152,11 +124,8 @@ private:
   ros::Rate rate_;
 
   ros::Publisher waypoint_marker_pub_;
-  ros::Publisher waypoint_number_pub_;
   int waypoint_box_count_;
-  int waypoint_text_count_;
   visualization_msgs::MarkerArray waypoint_arrow_markers_;
-  visualization_msgs::MarkerArray waypoint_num_markers;
 };
 
 
