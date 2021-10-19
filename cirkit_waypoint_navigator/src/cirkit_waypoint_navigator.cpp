@@ -17,9 +17,10 @@ read_csv.cpp : https://gist.github.com/yoneken/5765597#file-read_csv-cpp
 #include <tf/transform_listener.h>
 #include <visualization_msgs/Marker.h>
 #include <cirkit_waypoint_navigator/TeleportAbsolute.h>
-
+#include <dynamic_reconfigure/client.h>
 #include <boost/shared_array.hpp>
 #include <boost/tokenizer.hpp>
+#include <dwa_local_planner/DWAPlannerConfig.h>
 
 #include <fstream>
 #include <iostream>
@@ -69,6 +70,11 @@ class WayPoint {
             return false;
         }
     }
+
+    bool isSlowDownArea(){
+      return area_type_ == 3;
+    }
+
     move_base_msgs::MoveBaseGoal goal_;
     int area_type_;
     double reach_threshold_;
@@ -78,7 +84,8 @@ class WayPoint {
 class CirkitWaypointNavigator {
     public:
     CirkitWaypointNavigator()
-    : ac_("move_base", true),
+    : move_base_config_client_("/move_base/DWAPlannerROS"),
+    ac_("move_base", true),
     rate_(10)
     {
         robot_behavior_state_ = RobotBehaviors::INIT_NAV;
@@ -101,6 +108,12 @@ class CirkitWaypointNavigator {
         readWaypoint(filename.c_str());
         ROS_INFO("Waiting for action server to start.");
         ac_.waitForServer();
+
+        bool is_not_timeout = move_base_config_client_.getCurrentConfiguration(default_move_base_config_);
+        if(!is_not_timeout){
+          ROS_ERROR("Could not load DWA Planner config!");
+          exit(-1);
+        }
     }
 
     ~CirkitWaypointNavigator() {
@@ -386,11 +399,11 @@ class CirkitWaypointNavigator {
                             }
                         }
                     }
-                if (! is_set_next_as_target) {
-                    this->setNextGoal(next_waypoint);
-                    robot_behavior_state_ = RobotBehaviors::WAYPOINT_NAV;
-                    is_set_next_as_target = false;
-                    ROS_INFO_STREAM("Valid target object isn't founded, hence next waypoint is set.");
+                    if (! is_set_next_as_target) {
+                        this->setNextGoal(next_waypoint);
+                        robot_behavior_state_ = RobotBehaviors::WAYPOINT_NAV;
+                        is_set_next_as_target = false;
+                        ROS_INFO_STREAM("Valid target object isn't founded, hence next waypoint is set.");
                     }
                 } else { // 探索エリアだが探索対象がいない
                     ROS_INFO("Searching area but there are not target objects.");
@@ -406,6 +419,12 @@ class CirkitWaypointNavigator {
             ros::Time verbose_start = ros::Time::now();
             double last_distance_to_goal = 0;
             double delta_distance_to_goal = 1.0; // 0.1[m]より大きければよい
+
+            // Slow down if area_type_ is 3.
+            if(next_waypoint.isSlowDownArea()){
+              this->slowDownMoveBaseSpeed();
+            }
+
             while (ros::ok()) {
                 geometry_msgs::Pose robot_current_position = this->getRobotCurrentPosition(); // 現在のロボットの座標
                 geometry_msgs::Pose now_goal_position = this->getNowGoalPosition(); // 現在目指している座標
@@ -456,6 +475,12 @@ class CirkitWaypointNavigator {
                 rate_.sleep();
                 ros::spinOnce();
             }
+
+          // Restore move speed if area_type_ is 3.
+          if(next_waypoint.isSlowDownArea()){
+            this->restoreMoveBaseSpeed();
+          }
+
             switch (robot_behavior_state_) {
                 case RobotBehaviors::WAYPOINT_REACHED_GOAL: {
                     ROS_INFO("WAYPOINT_REACHED_GOAL");
@@ -516,6 +541,24 @@ class CirkitWaypointNavigator {
         } // while(ros::ok())
     }
 
+    void slowDownMoveBaseSpeed(){
+      // TODO
+      auto tmp = default_move_base_config_;
+      tmp.max_vel_trans = 0.8;
+      bool success = move_base_config_client_.setConfiguration(tmp);
+      if(not success){
+        ROS_ERROR("Could not set DWA configuration!");
+      }
+    }
+
+    void restoreMoveBaseSpeed(){
+    // max vel trans
+      bool success = move_base_config_client_.setConfiguration(default_move_base_config_);
+      if(not success){
+        ROS_ERROR("Could not set DWA configuration!");
+      }
+    }
+
     private:
     MoveBaseClient ac_;
     RobotBehaviors::State robot_behavior_state_;
@@ -539,12 +582,13 @@ class CirkitWaypointNavigator {
     ros::Publisher cmd_vel_pub_;
     ros::Publisher next_waypoint_marker_pub_;
     ros::ServiceClient detect_target_object_monitor_client_;
+    dynamic_reconfigure::Client<dwa_local_planner::DWAPlannerConfig> move_base_config_client_;
+    dwa_local_planner::DWAPlannerConfig default_move_base_config_;
 };
 
 int main(int argc, char** argv){
     ros::init(argc, argv, "cirkit_waypoint_navigator");
-
-    CirkitWaypointNavigator cirkit_waypoint_navigator;
+    CirkitWaypointNavigator cirkit_waypoint_navigator{};
     cirkit_waypoint_navigator.run();
 
     return 0;

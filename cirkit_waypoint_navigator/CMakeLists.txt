@@ -13,6 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
   sensor_msgs
   tf
   visualization_msgs
+  dynamic_reconfigure
 )
 
 find_package(PkgConfig)
