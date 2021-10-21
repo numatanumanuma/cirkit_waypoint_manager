@@ -41,6 +41,8 @@ public:
     std::ifstream ifs(waypoint_file.c_str());
     std::string line;
     int num = 1;
+    waypoint_box_count_ = 0;
+    waypoint_text_count_ = 0;
     while(ifs.good()){
       getline(ifs, line);
       if(line.empty()){ break; }
