@@ -21,6 +21,7 @@ read_csv.cpp : https://gist.github.com/yoneken/5765597#file-read_csv-cpp
 #include <boost/shared_array.hpp>
 #include <boost/tokenizer.hpp>
 #include <dwa_local_planner/DWAPlannerConfig.h>
+#include <std_msgs/Int32.h>
 
 #include <fstream>
 #include <iostream>
@@ -75,6 +76,10 @@ class WayPoint {
       return area_type_ == 3;
     }
 
+    int getAreaType(){
+        return area_type_;
+    }
+
     move_base_msgs::MoveBaseGoal goal_;
     int area_type_;
     double reach_threshold_;
@@ -105,6 +110,7 @@ class CirkitWaypointNavigator {
         detect_target_objects_sub_ = nh_.subscribe("/recognized_result", 1, &CirkitWaypointNavigator::detectTargetObjectCallback, this);
         detect_target_object_monitor_client_ = nh_.serviceClient<cirkit_waypoint_navigator::TeleportAbsolute>("third_robot_monitor_human_pose");
         next_waypoint_marker_pub_ = nh_.advertise<visualization_msgs::Marker>("/next_waypoint", 1);
+        area_type_pub_ = nh_.advertise<std_msgs::Int32>("/area_type", 1);
         ROS_INFO("Reading Waypoints.");
         readWaypoint(filename.c_str());
         ROS_INFO("Waiting for action server to start.");
@@ -420,14 +426,14 @@ class CirkitWaypointNavigator {
             if(next_waypoint.isSlowDownArea()){
               if(!is_slowdown_){
                   is_slowdown_ = true;
-                  this->slowDownMoveBaseSpeed();                        
+                //   this->slowDownMoveBaseSpeed();                        
               }else{
                   ; // slow down 状態を継続
               }      
             }else{
                 if(is_slowdown_){
                   is_slowdown_ = false;
-                  this->restoreMoveBaseSpeed();  
+                //   this->restoreMoveBaseSpeed();
                 }
             }
 
@@ -538,6 +544,7 @@ class CirkitWaypointNavigator {
                     break;
                 }
             }
+            publishAreaType(next_waypoint.getAreaType());
             rate_.sleep();
             ros::spinOnce();
         } // while(ros::ok())
@@ -568,6 +575,12 @@ class CirkitWaypointNavigator {
       }
     }
 
+    void publishAreaType(int area_type){
+        std_msgs::Int32 msg;
+        msg.data = area_type;
+        area_type_pub_.publish(msg);
+    }
+
     private:
     MoveBaseClient ac_;
     RobotBehaviors::State robot_behavior_state_;
@@ -590,6 +603,7 @@ class CirkitWaypointNavigator {
     sensor_msgs::PointCloud cloud_;
     ros::Publisher cmd_vel_pub_;
     ros::Publisher next_waypoint_marker_pub_;
+    ros::Publisher area_type_pub_;
     ros::ServiceClient detect_target_object_monitor_client_;
     dynamic_reconfigure::Client<dwa_local_planner::DWAPlannerConfig> move_base_config_client_;
     dwa_local_planner::DWAPlannerConfig default_move_base_config_;
