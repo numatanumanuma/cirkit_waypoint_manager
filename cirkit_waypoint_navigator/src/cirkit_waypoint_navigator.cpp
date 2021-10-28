@@ -418,7 +418,17 @@ class CirkitWaypointNavigator {
 
             // Slow down if area_type_ is 3.
             if(next_waypoint.isSlowDownArea()){
-              this->slowDownMoveBaseSpeed();
+              if(!is_slowdown_){
+                  is_slowdown_ = true;
+                  this->slowDownMoveBaseSpeed();                        
+              }else{
+                  ; // slow down 状態を継続
+              }      
+            }else{
+                if(is_slowdown_){
+                  is_slowdown_ = false;
+                  this->restoreMoveBaseSpeed();  
+                }
             }
 
             while (ros::ok()) {
@@ -472,10 +482,6 @@ class CirkitWaypointNavigator {
                 ros::spinOnce();
             }
 
-          // Restore move speed if area_type_ is 3.
-          if(next_waypoint.isSlowDownArea()){
-            this->restoreMoveBaseSpeed();
-          }
 
             switch (robot_behavior_state_) {
                 case RobotBehaviors::WAYPOINT_REACHED_GOAL: {
@@ -538,6 +544,7 @@ class CirkitWaypointNavigator {
     }
 
     void slowDownMoveBaseSpeed(){
+        ROS_INFO("move_base slow downed");
       // TODO
         bool is_not_timeout = move_base_config_client_.getCurrentConfiguration(default_move_base_config_, ros::Duration(5.0));
         if(!is_not_timeout){
@@ -545,7 +552,7 @@ class CirkitWaypointNavigator {
             exit(-1);
         }
         auto tmp = default_move_base_config_;
-        tmp.max_vel_trans = slowdown_speed_;
+        // tmp.max_vel_trans = slowdown_speed_;
         bool success = move_base_config_client_.setConfiguration(tmp);
         if(not success){
         ROS_ERROR("Could not set DWA configuration!");
@@ -553,6 +560,7 @@ class CirkitWaypointNavigator {
     }
 
     void restoreMoveBaseSpeed(){
+        ROS_INFO("move_base reset");
     // max vel trans
       bool success = move_base_config_client_.setConfiguration(default_move_base_config_);
       if(not success){
@@ -585,6 +593,7 @@ class CirkitWaypointNavigator {
     ros::ServiceClient detect_target_object_monitor_client_;
     dynamic_reconfigure::Client<dwa_local_planner::DWAPlannerConfig> move_base_config_client_;
     dwa_local_planner::DWAPlannerConfig default_move_base_config_;
+    bool is_slowdown_ = false;
 
     double slowdown_speed_;
 };
