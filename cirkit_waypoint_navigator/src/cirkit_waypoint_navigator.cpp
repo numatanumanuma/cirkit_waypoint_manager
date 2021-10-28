@@ -99,6 +99,7 @@ class CirkitWaypointNavigator {
         n.param("dist_thres_to_target_object", dist_thres_to_target_object_, 1.8);
         n.param("limit_of_approach_to_target", limit_of_approach_to_target_, 5);
         n.param("start_waypoint", target_waypoint_index_, 0);
+        n.param("slowdown_speed", slowdown_speed_, 0.5);
 
         ROS_INFO("[Waypoints file name] : %s", filename.c_str());
         detect_target_objects_sub_ = nh_.subscribe("/recognized_result", 1, &CirkitWaypointNavigator::detectTargetObjectCallback, this);
@@ -544,7 +545,7 @@ class CirkitWaypointNavigator {
             exit(-1);
         }
         auto tmp = default_move_base_config_;
-        tmp.max_vel_trans = 0.8;
+        tmp.max_vel_trans = slowdown_speed_;
         bool success = move_base_config_client_.setConfiguration(tmp);
         if(not success){
         ROS_ERROR("Could not set DWA configuration!");
@@ -584,6 +585,8 @@ class CirkitWaypointNavigator {
     ros::ServiceClient detect_target_object_monitor_client_;
     dynamic_reconfigure::Client<dwa_local_planner::DWAPlannerConfig> move_base_config_client_;
     dwa_local_planner::DWAPlannerConfig default_move_base_config_;
+
+    double slowdown_speed_;
 };
 
 int main(int argc, char** argv){
