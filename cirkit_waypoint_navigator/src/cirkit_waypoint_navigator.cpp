@@ -109,11 +109,6 @@ class CirkitWaypointNavigator {
         ROS_INFO("Waiting for action server to start.");
         ac_.waitForServer();
 
-        bool is_not_timeout = move_base_config_client_.getCurrentConfiguration(default_move_base_config_);
-        if(!is_not_timeout){
-          ROS_ERROR("Could not load DWA Planner config!");
-          exit(-1);
-        }
     }
 
     ~CirkitWaypointNavigator() {
@@ -543,12 +538,17 @@ class CirkitWaypointNavigator {
 
     void slowDownMoveBaseSpeed(){
       // TODO
-      auto tmp = default_move_base_config_;
-      tmp.max_vel_trans = 0.8;
-      bool success = move_base_config_client_.setConfiguration(tmp);
-      if(not success){
+        bool is_not_timeout = move_base_config_client_.getCurrentConfiguration(default_move_base_config_, ros::Duration(5.0));
+        if(!is_not_timeout){
+            ROS_ERROR("Could not load DWA Planner config!");
+            exit(-1);
+        }
+        auto tmp = default_move_base_config_;
+        tmp.max_vel_trans = 0.8;
+        bool success = move_base_config_client_.setConfiguration(tmp);
+        if(not success){
         ROS_ERROR("Could not set DWA configuration!");
-      }
+        }
     }
 
     void restoreMoveBaseSpeed(){
