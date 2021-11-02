@@ -553,19 +553,19 @@ class CirkitWaypointNavigator {
         }
         auto tmp = default_move_base_config_;
         // tmp.max_vel_trans = slowdown_speed_;
-        bool success = move_base_config_client_.setConfiguration(tmp);
-        if(not success){
-        ROS_ERROR("Could not set DWA configuration!");
-        }
+        // bool success = move_base_config_client_.setConfiguration(tmp);
+        // if(not success){
+        // ROS_ERROR("Could not set DWA configuration!");
+        // }
     }
 
     void restoreMoveBaseSpeed(){
         ROS_INFO("move_base reset");
     // max vel trans
-      bool success = move_base_config_client_.setConfiguration(default_move_base_config_);
-      if(not success){
-        ROS_ERROR("Could not set DWA configuration!");
-      }
+    //   bool success = move_base_config_client_.setConfiguration(default_move_base_config_);
+    //   if(not success){
+    //     ROS_ERROR("Could not set DWA configuration!");
+    //   }
     }
 
     private:
