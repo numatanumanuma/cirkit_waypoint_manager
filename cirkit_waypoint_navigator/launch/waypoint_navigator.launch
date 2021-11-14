@@ -2,12 +2,16 @@
 
   <arg name="waypoint_filename" default="$(find cirkit_waypoint_navigator)/waypoints/ekiden_final/first/2017-04-15-10-41-04.csv" />
   <arg name="start_waypoint" default="0"/>
-  <arg name="slowdown_speed" default="0.5"/>
+  <arg name="slowdown_speed" default="0.3"/>
+  <arg name="speedup_speed" default="0.8"/>
+  <arg name="lineup_path_distance_bias" default="1.2"/>
 
   <node name="cirkit_waypoint_navigator_node" pkg="cirkit_waypoint_navigator" type="cirkit_waypoint_navigator_node" output="screen">
     <param name="waypointsfile" value="$(arg waypoint_filename)" />
     <param name="start_waypoint" value="$(arg start_waypoint)"/>
     <param name="slowdown_speed" value="$(arg slowdown_speed)"/>
+    <param name="speedup_speed" value="$(arg slowdown_speed)"/>
+    <param name="lineup_path_distance_bias" value="$(arg lineup_path_distance_bias)"/>
   </node>
 
   <node pkg="cirkit_waypoint_generator" name="cirkit_waypoint_server" type="cirkit_waypoint_server" args="--load $(arg waypoint_filename)" output="screen"/>
