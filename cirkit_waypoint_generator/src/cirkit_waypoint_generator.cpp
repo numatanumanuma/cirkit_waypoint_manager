@@ -225,6 +225,8 @@ public:
   */
   void addWaypointNDT(const geometry_msgs::PoseStamped::ConstPtr& ndt_pose)
   {
+    return; // 現在は使わない
+    
     geometry_msgs::PoseWithCovariance pose;
     pose.pose = ndt_pose->pose;
     double diff_dist = calculateDistance(pose);

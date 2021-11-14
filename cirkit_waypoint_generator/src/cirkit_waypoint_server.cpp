@@ -108,6 +108,7 @@ public:
   void makeWaypointMarker(const geometry_msgs::PoseWithCovariance new_pose,
                           int is_searching_area, double reach_threshold)
   {
+    int area_type = is_searching_area;
     visualization_msgs::Marker waypoint_marker;
     waypoint_marker.header.frame_id = "map";
     waypoint_marker.header.stamp = ros::Time();
@@ -120,12 +121,37 @@ public:
     waypoint_marker.scale.z = 0.0;
     waypoint_marker.color.a = 0.7;
     // waypointのarea_typeによって色変
-    waypoint_marker.color.r = 0.05 + 1.0*(float)is_searching_area;
+    waypoint_marker.color.r = 0.0;
     waypoint_marker.color.g = 0.80;
     waypoint_marker.color.b = 0.2;
-    if (is_searching_area == 2){
-      waypoint_marker.color.r = 0.05;
-      waypoint_marker.color.b = 1.0; 
+    if (area_type == 1){
+      waypoint_marker.color.r = 1.0;
+      waypoint_marker.color.g = 0.8;
+      waypoint_marker.color.b = 0.2;
+    }
+    if (area_type == 2){
+      // stop area
+      waypoint_marker.color.r = 1.0;
+      waypoint_marker.color.g = 0.8;
+      waypoint_marker.color.b = 0.2;
+    }
+    if (area_type == 3){
+      // slow down
+      waypoint_marker.color.r = 0.0;
+      waypoint_marker.color.g = 0.0;
+      waypoint_marker.color.b = 1.0;
+    }
+    if (area_type == 4){
+      // speed up
+      waypoint_marker.color.r = 1.0;
+      waypoint_marker.color.g = 0.0;
+      waypoint_marker.color.b = 0.2;
+    }
+    if (area_type == 5){
+      // line up
+      waypoint_marker.color.r = 1.0;
+      waypoint_marker.color.g = 0.0;
+      waypoint_marker.color.b = 1.0;
     }
     waypoint_arrow_markers_.markers.push_back(waypoint_marker);
     waypoint_marker_pub_.publish(waypoint_arrow_markers_);

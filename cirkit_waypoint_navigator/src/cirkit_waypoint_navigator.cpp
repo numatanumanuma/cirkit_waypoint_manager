@@ -1,7 +1,6 @@
 /*-------------------------------------------------
 参考プログラム
 read_csv.cpp : https://gist.github.com/yoneken/5765597#file-read_csv-cpp
-
 -------------------------------------------------- */
 
 #include <ros/ros.h>
@@ -63,17 +62,17 @@ class WayPoint {
             return false;
         }
     }
-    // add stop flag
     bool isStopArea(){
-        if (area_type_ == 2) {
-            return true;
-        }else{
-            return false;
-        }
+        return area_type_ == 2;
     }
-
     bool isSlowDownArea(){
-      return area_type_ == 3;
+        return area_type_ == 3;
+    }
+    bool isSpeedUpArea(){
+        return area_type_ == 4;
+    }
+    bool isLineUpArea(){
+        return area_type_ == 5;
     }
 
     int getAreaType(){
@@ -104,7 +103,9 @@ class CirkitWaypointNavigator {
         n.param("dist_thres_to_target_object", dist_thres_to_target_object_, 1.8);
         n.param("limit_of_approach_to_target", limit_of_approach_to_target_, 5);
         n.param("start_waypoint", target_waypoint_index_, 0);
-        n.param("slowdown_speed", slowdown_speed_, 0.5);
+        n.param("slowdown_speed", slowdown_speed_, 0.3);
+        n.param("speedup_speed", speedup_speed_, 0.8);
+        n.param("lineup_path_distance_bias", lineup_path_distance_bias_, 1.2);
 
         ROS_INFO("[Waypoints file name] : %s", filename.c_str());
         detect_target_objects_sub_ = nh_.subscribe("/recognized_result", 1, &CirkitWaypointNavigator::detectTargetObjectCallback, this);
@@ -315,17 +316,6 @@ class CirkitWaypointNavigator {
         cmd_vel_pub_.shutdown();
     }
 
-    // GOのフラグが来るまで待機
-    void waitingFlag() {
-        while(ros::ok()) {
-            if (kbhit() && getche() == 's') {
-                break;
-            }
-            ros::spinOnce();
-            rate_.sleep();
-        }
-    }
-
     void laserCallback(const sensor_msgs::LaserScan::ConstPtr& scan) {
         projector_.projectLaser(*scan, cloud_);
     }
@@ -375,6 +365,7 @@ class CirkitWaypointNavigator {
     void run() {
         robot_behavior_state_ = RobotBehaviors::INIT_NAV;
         number_of_approached_to_target_ = 0;
+        // this->saveNowMoveBaseConfig();
         while (ros::ok()) {
             bool is_set_next_as_target = false;
             WayPoint next_waypoint = this->getNextWaypoint();
@@ -422,20 +413,24 @@ class CirkitWaypointNavigator {
             double last_distance_to_goal = 0;
             double delta_distance_to_goal = 1.0; // 0.1[m]より大きければよい
 
-            // Slow down if area_type_ is 3.
-            if(next_waypoint.isSlowDownArea()){
-              if(!is_slowdown_){
-                  is_slowdown_ = true;
-                //   this->slowDownMoveBaseSpeed();                        
-              }else{
-                  ; // slow down 状態を継続
-              }      
-            }else{
-                if(is_slowdown_){
-                  is_slowdown_ = false;
-                //   this->restoreMoveBaseSpeed();
+            // move_baseのconfigを変更
+            if (now_area_type_ != next_waypoint.getAreaType()) {
+                // waypointのtypeが切り替わったとき
+                if (!now_default_movebase_config_){
+                    // 現在のconfigがdefaultでないなら一旦戻して...
+                    this->restoreMoveBaseConfig();
+                }
+                if (next_waypoint.isSlowDownArea()){
+                    this->slowDownMoveBaseSpeed();
+                }
+                if (next_waypoint.isSpeedUpArea()){
+                    this->speedUpMoveBaseSpeed();
+                }
+                if (next_waypoint.isLineUpArea()){
+                    this->lineUpModeMoveBase();
                 }
             }
+            now_area_type_ = next_waypoint.getAreaType();
 
             while (ros::ok()) {
                 geometry_msgs::Pose robot_current_position = this->getRobotCurrentPosition(); // 現在のロボットの座標
@@ -550,31 +545,79 @@ class CirkitWaypointNavigator {
         } // while(ros::ok())
     }
 
-    void slowDownMoveBaseSpeed(){
-        ROS_INFO("move_base slow downed");
-      // TODO
+    // GOのフラグが来るまで待機
+    void waitingFlag() {
+        while(ros::ok()) {
+            if (kbhit() && getche() == 's') {
+                break;
+            }
+            ros::spinOnce();
+            rate_.sleep();
+        }
+    }
+
+    // 現在のconfigを保存
+    // TODO : 本当はコンストラクタとかで一回だけ呼んでおきたかったが,エラーになるので変更時その都度呼んでいる
+    void saveNowMoveBaseConfig(){
         bool is_not_timeout = move_base_config_client_.getCurrentConfiguration(default_move_base_config_, ros::Duration(5.0));
         if(!is_not_timeout){
             ROS_ERROR("Could not load DWA Planner config!");
             exit(-1);
         }
+        ROS_INFO("GET now move_base config");
+    }
+
+    // 減速
+    void slowDownMoveBaseSpeed(){
+        ROS_INFO("<-- move_base slow downed -->");
+        this->saveNowMoveBaseConfig();
         auto tmp = default_move_base_config_;
-        // tmp.max_vel_trans = slowdown_speed_;
-        // bool success = move_base_config_client_.setConfiguration(tmp);
-        // if(not success){
-        // ROS_ERROR("Could not set DWA configuration!");
-        // }
+        tmp.max_vel_trans = slowdown_speed_;
+        tmp.max_vel_x = slowdown_speed_;
+        tmp.acc_lim_x = slowdown_speed_ * 5;
+        bool success = move_base_config_client_.setConfiguration(tmp);
+        if(not success){
+            ROS_ERROR("Could not set DWA configuration!");
+        }
+        now_default_movebase_config_ = false;
+    }
+    // 加速
+    void speedUpMoveBaseSpeed(){
+        ROS_INFO("<-- move_base speed up -->");
+        this->saveNowMoveBaseConfig();
+        auto tmp = default_move_base_config_;
+        tmp.max_vel_trans = speedup_speed_;
+        tmp.max_vel_x = speedup_speed_;
+        tmp.acc_lim_x = speedup_speed_ * 5;
+        bool success = move_base_config_client_.setConfiguration(tmp);
+        if(not success){
+            ROS_ERROR("Could not set DWA configuration!");
+        }
+        now_default_movebase_config_ = false;
+    }
+    // 待機列に並ぶためにpath_distance_biasを変更
+    void lineUpModeMoveBase(){
+        ROS_INFO("<-- move_base line up mode -->");
+        this->saveNowMoveBaseConfig();
+        auto tmp = default_move_base_config_;
+        tmp.path_distance_bias = lineup_path_distance_bias_;
+        bool success = move_base_config_client_.setConfiguration(tmp);
+        if(not success){
+            ROS_ERROR("Could not set DWA configuration!");
+        }
+        now_default_movebase_config_ = false;
     }
 
-    void restoreMoveBaseSpeed(){
+    void restoreMoveBaseConfig(){
         ROS_INFO("move_base reset");
-    // max vel trans
-    //   bool success = move_base_config_client_.setConfiguration(default_move_base_config_);
-    //   if(not success){
-    //     ROS_ERROR("Could not set DWA configuration!");
-    //   }
+        bool success = move_base_config_client_.setConfiguration(default_move_base_config_);
+        if(not success){
+            ROS_ERROR("Could not set DWA configuration!");
+        }
+        now_default_movebase_config_ = true;
     }
 
+    // nextwaypointのarea_typeをpublish
     void publishAreaType(int area_type){
         std_msgs::Int32 msg;
         msg.data = area_type;
@@ -608,8 +651,11 @@ class CirkitWaypointNavigator {
     dynamic_reconfigure::Client<dwa_local_planner::DWAPlannerConfig> move_base_config_client_;
     dwa_local_planner::DWAPlannerConfig default_move_base_config_;
     bool is_slowdown_ = false;
-
+    bool now_default_movebase_config_ = true;
+    int now_area_type_ = -1;
     double slowdown_speed_;
+    double speedup_speed_;
+    double lineup_path_distance_bias_;
 };
 
 int main(int argc, char** argv){
