@@ -419,6 +419,14 @@ class CirkitWaypointNavigator {
                 if (!now_default_movebase_config_){
                     // 現在のconfigがdefaultでないなら一旦戻して...
                     this->restoreMoveBaseConfig();
+                    /*
+                     現状,configを戻してまたそれを見に行っているので
+                     ここでspinOnce()して更新している
+                     slowDownMoveBaseSpeed()などで呼んでいるsaveNowMoveBaseConfig()
+                     をコンストラクタなどで一度だけ呼べれば以下はいらない(はず)
+                    */
+                    // ros::Duration(0.1).sleep();
+                    ros::spinOnce();
                 }
                 if (next_waypoint.isSlowDownArea()){
                     this->slowDownMoveBaseSpeed();
