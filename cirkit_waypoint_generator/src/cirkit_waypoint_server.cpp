@@ -69,7 +69,7 @@ public:
         new_pose.pose.orientation.z = data[5];
         new_pose.pose.orientation.w = data[6];
         makeWaypointMarker(new_pose, (int)data[7], data[8]);
-        makeWaypointNumber(new_pose, num ++);
+        makeWaypointNumber(new_pose, (int)data[7], num ++);
       }
     }
     ROS_INFO_STREAM(waypoint_box_count_ << "waypoints are loaded.");
@@ -82,8 +82,10 @@ public:
     tf::Matrix3x3(tfq).getRPY(roll, pitch, yaw);
   }
 
-  void makeWaypointNumber(const geometry_msgs::PoseWithCovariance new_pose, int number)
+  void makeWaypointNumber(const geometry_msgs::PoseWithCovariance new_pose, 
+                          int is_searching_area, int number)
   {
+    int area_type = is_searching_area;
     visualization_msgs::Marker waypoint_marker;
     waypoint_marker.header.frame_id = "map";
     waypoint_marker.header.stamp = ros::Time();
@@ -93,11 +95,13 @@ public:
     waypoint_marker.pose = new_pose.pose;
     waypoint_marker.scale.x = 0.0;
     waypoint_marker.scale.y = 0.0;
-    waypoint_marker.scale.z = 0.5;
-    waypoint_marker.color.a = 1.0;
-    waypoint_marker.color.r = 0.0;
-    waypoint_marker.color.g = 0.0;
-    waypoint_marker.color.b = 0.0;
+    waypoint_marker.scale.z = 1.2;
+    waypoint_marker.color.a = 0.9;
+    double r, g, b;
+    getColor(area_type, r, g, b);
+    waypoint_marker.color.r = r;
+    waypoint_marker.color.g = g;
+    waypoint_marker.color.b = b;
     waypoint_marker.text = std::to_string(number);
     waypoint_num_markers.markers.push_back(waypoint_marker);
     waypoint_number_pub_.publish(waypoint_num_markers);
@@ -120,39 +124,11 @@ public:
     waypoint_marker.scale.y = 0.5;
     waypoint_marker.scale.z = 0.0;
     waypoint_marker.color.a = 0.7;
-    // waypointのarea_typeによって色変
-    waypoint_marker.color.r = 0.0;
-    waypoint_marker.color.g = 0.80;
-    waypoint_marker.color.b = 0.2;
-    if (area_type == 1){
-      waypoint_marker.color.r = 1.0;
-      waypoint_marker.color.g = 0.8;
-      waypoint_marker.color.b = 0.2;
-    }
-    if (area_type == 2){
-      // stop area
-      waypoint_marker.color.r = 1.0;
-      waypoint_marker.color.g = 0.8;
-      waypoint_marker.color.b = 0.2;
-    }
-    if (area_type == 3){
-      // slow down
-      waypoint_marker.color.r = 0.0;
-      waypoint_marker.color.g = 0.0;
-      waypoint_marker.color.b = 1.0;
-    }
-    if (area_type == 4){
-      // speed up
-      waypoint_marker.color.r = 1.0;
-      waypoint_marker.color.g = 0.0;
-      waypoint_marker.color.b = 0.2;
-    }
-    if (area_type == 5){
-      // line up
-      waypoint_marker.color.r = 1.0;
-      waypoint_marker.color.g = 0.0;
-      waypoint_marker.color.b = 1.0;
-    }
+    double r, g, b;
+    getColor(area_type, r, g, b);
+    waypoint_marker.color.r = r;
+    waypoint_marker.color.g = g;
+    waypoint_marker.color.b = b;
     waypoint_arrow_markers_.markers.push_back(waypoint_marker);
     waypoint_marker_pub_.publish(waypoint_arrow_markers_);
     waypoint_box_count_++;
@@ -164,6 +140,42 @@ public:
     waypoint_number_pub_.publish(waypoint_num_markers);
   }
 
+  void getColor(int area_type, double& r, double& g, double& b)
+  {
+    // waypointのarea_typeによって色変
+    r = 0.0;
+    g = 0.8;
+    b = 0.2;
+    if (area_type == 1){
+      r = 0.0;
+      g = 1.0;
+      b = 0.0;
+    }
+    if (area_type == 2){
+      // stop area
+      r = 1.0;
+      g = 0.8;
+      b = 0.0;
+    }
+    if (area_type == 3){
+      // slow down
+      r = 0.0;
+      g = 1.0;
+      b = 1.0;
+    }
+    if (area_type == 4){
+      // speed up
+      r = 1.0;
+      g = 0.0;
+      b = 0.2;
+    }
+    if (area_type == 5){
+      // line up
+      r = 1.0;
+      g = 0.0;
+      b = 1.0;
+    }
+  }
   
   void run()
   {
