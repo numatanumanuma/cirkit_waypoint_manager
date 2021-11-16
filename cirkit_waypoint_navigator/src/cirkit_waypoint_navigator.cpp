@@ -547,18 +547,8 @@ class CirkitWaypointNavigator {
                 }
                 case RobotBehaviors::DETECT_MOVE_BASE_ABORTED: {
                     ROS_INFO("!! DETECT_MOVE_BASE_ABORTED !!");
-                    this->cancelGoal(); // 今の探索対象をキャンセルして
-                    if (number_of_approached_to_target_ > limit_of_approach_to_target_) {
-                      // もし何度も同じ探索対象にアプローチしても到達出来なかったら
-                      // 探索済みに追加したままにしてアプローチ回数をリセットする
-                      number_of_approached_to_target_ = 0;
-                    }else{
-                      // アプローチ回数が一定値以下だったら、
-                      // 最後に突っ込んだ探索済みとした探索対象を削除する
-                      ROS_RED_STREAM("Faild to approach ... " << number_of_approached_to_target_ << "times");
-                      approached_target_objects_.boxes.pop_back();
-                      number_of_approached_to_target_ += 1;
-                    }
+                    //this->cancelGoal(); // 今のゴールをキャンセルして
+                    //this->tryBackRecovery(); // 1mくらい戻ってみて
                     target_waypoint_index_ -= 1; // waypoint indexを１つ戻す
                     break;
                 }
