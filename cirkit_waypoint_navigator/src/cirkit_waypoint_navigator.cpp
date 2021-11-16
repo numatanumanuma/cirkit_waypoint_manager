@@ -365,7 +365,7 @@ class CirkitWaypointNavigator {
     void run() {
         robot_behavior_state_ = RobotBehaviors::INIT_NAV;
         number_of_approached_to_target_ = 0;
-        // this->saveNowMoveBaseConfig();
+        // this->saveDefaultMoveBaseConfig();
         while (ros::ok()) {
             bool is_set_next_as_target = false;
             WayPoint next_waypoint = this->getNextWaypoint();
@@ -413,6 +413,7 @@ class CirkitWaypointNavigator {
             double last_distance_to_goal = 0;
             double delta_distance_to_goal = 1.0; // 0.1[m]より大きければよい
 
+            // this->saveDefaultMoveBaseConfig();
             // move_baseのconfigを変更
             if (now_area_type_ != next_waypoint.getAreaType()) {
                 // waypointのtypeが切り替わったとき
@@ -422,10 +423,10 @@ class CirkitWaypointNavigator {
                     /*
                      現状,configを戻してまたそれを見に行っているので
                      ここでspinOnce()して更新している
-                     slowDownMoveBaseSpeed()などで呼んでいるsaveNowMoveBaseConfig()
+                     slowDownMoveBaseSpeed()などで呼んでいるsaveDefaultMoveBaseConfig()
                      をコンストラクタなどで一度だけ呼べれば以下はいらない(はず)
                     */
-                    // ros::Duration(0.1).sleep();
+                    ros::Duration(0.1).sleep();
                     ros::spinOnce();
                 }
                 if (next_waypoint.isSlowDownArea()){
@@ -566,19 +567,24 @@ class CirkitWaypointNavigator {
 
     // 現在のconfigを保存
     // TODO : 本当はコンストラクタとかで一回だけ呼んでおきたかったが,エラーになるので変更時その都度呼んでいる
-    void saveNowMoveBaseConfig(){
+    void saveDefaultMoveBaseConfig(){
+        if (default_movebase_config_loaded_){
+            // 一回目だけ実行する
+            return;
+        }
         bool is_not_timeout = move_base_config_client_.getCurrentConfiguration(default_move_base_config_, ros::Duration(5.0));
         if(!is_not_timeout){
             ROS_ERROR("Could not load DWA Planner config!");
             exit(-1);
         }
+        default_movebase_config_loaded_ = true;
         ROS_INFO("GET now move_base config");
     }
 
     // 減速
     void slowDownMoveBaseSpeed(){
         ROS_INFO("<-- move_base slow downed -->");
-        this->saveNowMoveBaseConfig();
+        this->saveDefaultMoveBaseConfig();
         auto tmp = default_move_base_config_;
         tmp.max_vel_trans = slowdown_speed_;
         tmp.max_vel_x = slowdown_speed_;
@@ -592,7 +598,7 @@ class CirkitWaypointNavigator {
     // 加速
     void speedUpMoveBaseSpeed(){
         ROS_INFO("<-- move_base speed up -->");
-        this->saveNowMoveBaseConfig();
+        this->saveDefaultMoveBaseConfig();
         auto tmp = default_move_base_config_;
         tmp.max_vel_trans = speedup_speed_;
         tmp.max_vel_x = speedup_speed_;
@@ -606,7 +612,7 @@ class CirkitWaypointNavigator {
     // 待機列に並ぶためにpath_distance_biasを変更
     void lineUpModeMoveBase(){
         ROS_INFO("<-- move_base line up mode -->");
-        this->saveNowMoveBaseConfig();
+        this->saveDefaultMoveBaseConfig();
         auto tmp = default_move_base_config_;
         tmp.path_distance_bias = lineup_path_distance_bias_;
         bool success = move_base_config_client_.setConfiguration(tmp);
@@ -660,6 +666,7 @@ class CirkitWaypointNavigator {
     dwa_local_planner::DWAPlannerConfig default_move_base_config_;
     bool is_slowdown_ = false;
     bool now_default_movebase_config_ = true;
+    bool default_movebase_config_loaded_ = false;
     int now_area_type_ = -1;
     double slowdown_speed_;
     double speedup_speed_;
