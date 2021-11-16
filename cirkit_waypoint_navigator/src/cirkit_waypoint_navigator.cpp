@@ -629,6 +629,9 @@ class CirkitWaypointNavigator {
         ROS_INFO("<-- move_base line up mode -->");
         this->saveDefaultMoveBaseConfig();
         auto tmp = default_move_base_config_;
+        tmp.max_vel_trans = slowdown_speed_;
+        tmp.max_vel_x = slowdown_speed_;
+        tmp.acc_lim_x = slowdown_speed_ * 5;
         tmp.path_distance_bias = lineup_path_distance_bias_;
         bool success = move_base_config_client_.setConfiguration(tmp);
         if(not success){
