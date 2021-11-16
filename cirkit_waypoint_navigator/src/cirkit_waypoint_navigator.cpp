@@ -6,6 +6,7 @@ read_csv.cpp : https://gist.github.com/yoneken/5765597#file-read_csv-cpp
 #include <ros/ros.h>
 #include <ros/package.h>
 #include <actionlib/client/simple_action_client.h>
+#include <actionlib/client/simple_client_goal_state.h>
 #include <geometry_msgs/Pose.h>
 #include <jsk_recognition_msgs/BoundingBox.h>
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
@@ -44,7 +45,8 @@ namespace RobotBehaviors {
         INIT_NAV,
         WAYPOINT_NAV_PLANNING_ABORTED,
         DETECT_TARGET_NAV_PLANNING_ABORTED,
-        WAITING_FLAG
+        WAITING_FLAG,
+        DETECT_MOVE_BASE_ABORTED // when move_base report aborted.
     };
 }
 
@@ -446,6 +448,12 @@ class CirkitWaypointNavigator {
                 geometry_msgs::Pose now_goal_position = this->getNowGoalPosition(); // 現在目指している座標
                 double distance_to_goal = this->calculateDistance(robot_current_position, now_goal_position); // 現在位置とwaypointまでの距離を計算
                 // ここからスタック(Abort)判定。
+
+                if(ac_.getState() == actionlib::SimpleClientGoalState::StateEnum::ABORTED){
+                  robot_behavior_state_ = RobotBehaviors::DETECT_MOVE_BASE_ABORTED;
+                  break;
+                }
+
                 delta_distance_to_goal = last_distance_to_goal - distance_to_goal; // どれだけ進んだか
                 if (delta_distance_to_goal < 0.1) { // 進んだ距離が0.1[m]より小さくて
                     ros::Duration how_long_stay_time = ros::Time::now() - begin_navigation;
@@ -533,6 +541,23 @@ class CirkitWaypointNavigator {
                         ROS_RED_STREAM("Faild to approach ... " << number_of_approached_to_target_ << "times");
                         approached_target_objects_.boxes.pop_back();
                         number_of_approached_to_target_ += 1;
+                    }
+                    target_waypoint_index_ -= 1; // waypoint indexを１つ戻す
+                    break;
+                }
+                case RobotBehaviors::DETECT_MOVE_BASE_ABORTED: {
+                    ROS_INFO("!! DETECT_MOVE_BASE_ABORTED !!");
+                    this->cancelGoal(); // 今の探索対象をキャンセルして
+                    if (number_of_approached_to_target_ > limit_of_approach_to_target_) {
+                      // もし何度も同じ探索対象にアプローチしても到達出来なかったら
+                      // 探索済みに追加したままにしてアプローチ回数をリセットする
+                      number_of_approached_to_target_ = 0;
+                    }else{
+                      // アプローチ回数が一定値以下だったら、
+                      // 最後に突っ込んだ探索済みとした探索対象を削除する
+                      ROS_RED_STREAM("Faild to approach ... " << number_of_approached_to_target_ << "times");
+                      approached_target_objects_.boxes.pop_back();
+                      number_of_approached_to_target_ += 1;
                     }
                     target_waypoint_index_ -= 1; // waypoint indexを１つ戻す
                     break;
