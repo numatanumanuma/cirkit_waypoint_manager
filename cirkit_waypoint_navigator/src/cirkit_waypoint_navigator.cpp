@@ -23,6 +23,7 @@ read_csv.cpp : https://gist.github.com/yoneken/5765597#file-read_csv-cpp
 #include <dwa_local_planner/DWAPlannerConfig.h>
 #include <std_msgs/Int32.h>
 #include <move_base/MoveBaseConfig.h>
+#include <costmap_2d/ObstaclePluginConfig.h>
 
 #include <fstream>
 #include <iostream>
@@ -93,6 +94,7 @@ public:
   CirkitWaypointNavigator()
     : dwa_config_client_("/move_base/DWAPlannerROS"),
       move_base_config_client_("/move_base"),
+      obstacle_plugin_config_client_("/move_base/global_costmap/obstacles_laser"),
       ac_("move_base", true),
       rate_(10)
   {
@@ -422,6 +424,7 @@ public:
         // waypointのtypeが切り替わったとき
         this->restoreMoveBaseConfigIfNotDefault();
         this->restoreDWAConfigIfNotDefault();
+        this->restoreObstaclePluginConfigIfNotDefault();
 
         if (next_waypoint.isSlowDownArea()){
           this->slowDownMoveBaseSpeed();
@@ -585,7 +588,7 @@ public:
     bool is_not_timeout = dwa_config_client_.getCurrentConfiguration(default_dwa_config_, ros::Duration(5.0));
     if(!is_not_timeout){
       ROS_ERROR("Could not load DWA Planner config!");
-      exit(-1);
+      exit(-1);  
     }
     default_dwa_config_loaded_ = true;
     ROS_INFO("Default DWA config saved");
@@ -602,6 +605,19 @@ public:
     }
     default_move_base_config_loaded_ = true;
     ROS_INFO("Default move_base config saved");
+  }
+
+  void saveDefaultObstaclePluginConfigIfNotSaved(){
+    if (default_obstacle_plugin_config_loaded_){
+      // 一回目だけ実行する
+      return;
+    }
+    bool is_not_timeout = obstacle_plugin_config_client_.getCurrentConfiguration(default_obstacle_plugin_config_, ros::Duration(5.0));
+    if(!is_not_timeout){
+      ROS_ERROR("Could not load move_base config!");
+    }
+    default_obstacle_plugin_config_loaded_ = true;
+    ROS_INFO("Default obstacle_plugin config saved");
   }
 
   // 減速
@@ -637,6 +653,7 @@ public:
     ROS_INFO("<-- dwa line up mode -->");
     this->saveDefaultDWAConfigIfNotSaved();
     this->saveDefaultMoveBaseConfigIfNotSaved();
+    this->saveDefaultObstaclePluginConfigIfNotSaved();
 
     auto tmp = default_dwa_config_;
     tmp.max_vel_trans = slowdown_speed_;
@@ -657,6 +674,15 @@ public:
       ROS_ERROR("Could not set move_base configuration!");
     }
     now_default_move_base_config_ = false;
+
+    // costmap_globalのobstacle_layerをfalseにするやつ(defaultはfalseなので影響ないハズ)
+    auto obstacle_plugin_tmp = default_obstacle_plugin_config_;
+    obstacle_plugin_tmp.enabled = false;
+    success = obstacle_plugin_config_client_.setConfiguration(obstacle_plugin_tmp);
+    if(not success){
+      ROS_ERROR("Could not set obstacle_plugin configuration!");
+    }
+    now_default_obstacle_plugin_config_ = false;
   }
 
   void restoreDWAConfigIfNotDefault(){
@@ -687,6 +713,26 @@ public:
         ROS_ERROR("Could not set move_base configuration!");
       }
       now_default_move_base_config_ = true;
+
+      /**
+       * 現状,configを戻してまたそれを見に行っているので
+       * ここでspinOnce()して更新している
+       * slowDownMoveBaseSpeed()などで呼んでいるsaveDefaultMoveBaseConfig()
+       * をコンストラクタなどで一度だけ呼べれば以下はいらない(はず)
+       */
+      ros::Duration(0.1).sleep();
+      ros::spinOnce();
+    }
+  }
+
+  void restoreObstaclePluginConfigIfNotDefault(){
+    if(!now_default_obstacle_plugin_config_){
+      ROS_INFO("obstacle_plugin config reset");
+      bool success = obstacle_plugin_config_client_.setConfiguration(default_obstacle_plugin_config_);
+      if(not success){
+        ROS_ERROR("Could not set obstacle_plugin configuration!");
+      }
+      now_default_obstacle_plugin_config_ = true;
 
       /**
        * 現状,configを戻してまたそれを見に行っているので
@@ -732,13 +778,17 @@ private:
   ros::ServiceClient detect_target_object_monitor_client_;
   dynamic_reconfigure::Client<dwa_local_planner::DWAPlannerConfig> dwa_config_client_;
   dynamic_reconfigure::Client<move_base::MoveBaseConfig> move_base_config_client_;
+  dynamic_reconfigure::Client<costmap_2d::ObstaclePluginConfig> obstacle_plugin_config_client_;
   dwa_local_planner::DWAPlannerConfig default_dwa_config_;
   move_base::MoveBaseConfig default_move_base_config_;
+  costmap_2d::ObstaclePluginConfig default_obstacle_plugin_config_;
   bool is_slowdown_ = false;
   bool now_default_dwa_config_ = true;
   bool default_dwa_config_loaded_ = false;
   bool now_default_move_base_config_ = true;
   bool default_move_base_config_loaded_ = false;
+  bool now_default_obstacle_plugin_config_ = true;
+  bool default_obstacle_plugin_config_loaded_ = false;
   int now_area_type_ = -1;
   double slowdown_speed_;
   double speedup_speed_;
