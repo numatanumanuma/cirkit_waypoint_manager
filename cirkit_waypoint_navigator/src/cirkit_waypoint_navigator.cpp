@@ -88,14 +88,78 @@ public:
   double reach_threshold_;
 };
 
+template <typename T>
+class DynamicConfig{
+public:
+  DynamicConfig(const std::string &name)
+  : config_client(name){}
+
+  T loadDefault(){
+    if(!default_config_loaded){
+      bool is_not_timeout =
+        config_client.getCurrentConfiguration(
+          default_config_cache, ros::Duration(5.0));
+
+      if(!is_not_timeout){
+        std::stringstream err_ss;
+        err_ss << "Could not load" << typeid(T).name() << "config" << std::endl;
+        ROS_ERROR("%s", err_ss.str().c_str());
+      }
+
+      default_config_loaded = true;
+      std::stringstream info_ss;
+      info_ss << "Default" << typeid(T).name() << "config cached." << std::endl;
+      ROS_INFO("%s", info_ss.str().c_str());
+    }
+    return default_config_cache;
+  }
+
+  void setConfig(const T &config){
+    bool success = config_client.setConfiguration(config);
+    if(!success){
+      std::stringstream err_ss;
+      err_ss << "Could not set" << typeid(T).name() << "config" << std::endl;
+      ROS_ERROR("%s", err_ss.str().c_str());
+    }
+    is_default = false;
+  }
+
+  void restoreToDefault(){
+    if(is_default){
+      return;
+    }
+    std::stringstream info_ss;
+    info_ss << typeid(T).name() << "config restored to default." << std::endl;
+    ROS_INFO("%s", info_ss.str().c_str());
+    bool success = config_client.setConfiguration(default_config_cache);
+    if(!success){
+      std::stringstream err_ss;
+      err_ss << "Could not set" << typeid(T).name() << "config" << std::endl;
+      ROS_ERROR("%s", err_ss.str().c_str());
+    }
+    is_default = true;
+    /**
+     * 現状,configを戻してまたそれを見に行っているので
+     * ここでspinOnce()して更新している
+     * slowDownMoveBaseSpeed()などで呼んでいるsaveDefaultMoveBaseConfig()
+     * をコンストラクタなどで一度だけ呼べれば以下はいらない(はず)
+     */
+    ros::Duration(0.1).sleep();
+    ros::spinOnce();
+  }
+
+private:
+  bool is_default{true};
+  bool default_config_loaded{false};
+  T default_config_cache{};
+  dynamic_reconfigure::Client<T> config_client;
+};
+
 
 class CirkitWaypointNavigator {
 public:
   CirkitWaypointNavigator()
-    : dwa_config_client_("/move_base/DWAPlannerROS"),
-      move_base_config_client_("/move_base"),
-      obstacle_plugin_config_client_("/move_base/global_costmap/obstacles_laser"),
-      ac_("move_base", true),
+    : ac_("move_base", true),
       rate_(10)
   {
     robot_behavior_state_ = RobotBehaviors::INIT_NAV;
@@ -422,9 +486,9 @@ public:
       // DWA, move_baseのconfigを変更
       if (now_area_type_ != next_waypoint.getAreaType()) {
         // waypointのtypeが切り替わったとき
-        this->restoreMoveBaseConfigIfNotDefault();
-        this->restoreDWAConfigIfNotDefault();
-        this->restoreObstaclePluginConfigIfNotDefault();
+        dwa_dynamic_config_.restoreToDefault();
+        move_base_dynamic_config_.restoreToDefault();
+        obstacle_plugin_dynamic_config_.restoreToDefault();
 
         if (next_waypoint.isSlowDownArea()){
           this->slowDownMoveBaseSpeed();
@@ -578,171 +642,43 @@ public:
     }
   }
 
-  // 現在のconfigを保存
-  // TODO : 本当はコンストラクタとかで一回だけ呼んでおきたかったが,エラーになるので変更時その都度呼んでいる
-  void saveDefaultDWAConfigIfNotSaved(){
-    if (default_dwa_config_loaded_){
-      // 一回目だけ実行する
-      return;
-    }
-    bool is_not_timeout = dwa_config_client_.getCurrentConfiguration(default_dwa_config_, ros::Duration(5.0));
-    if(!is_not_timeout){
-      ROS_ERROR("Could not load DWA Planner config!");
-      exit(-1);  
-    }
-    default_dwa_config_loaded_ = true;
-    ROS_INFO("Default DWA config saved");
-  }
-
-  void saveDefaultMoveBaseConfigIfNotSaved(){
-    if (default_move_base_config_loaded_){
-      // 一回目だけ実行する
-      return;
-    }
-    bool is_not_timeout = move_base_config_client_.getCurrentConfiguration(default_move_base_config_, ros::Duration(5.0));
-    if(!is_not_timeout){
-      ROS_ERROR("Could not load move_base config!");
-    }
-    default_move_base_config_loaded_ = true;
-    ROS_INFO("Default move_base config saved");
-  }
-
-  void saveDefaultObstaclePluginConfigIfNotSaved(){
-    if (default_obstacle_plugin_config_loaded_){
-      // 一回目だけ実行する
-      return;
-    }
-    bool is_not_timeout = obstacle_plugin_config_client_.getCurrentConfiguration(default_obstacle_plugin_config_, ros::Duration(5.0));
-    if(!is_not_timeout){
-      ROS_ERROR("Could not load move_base config!");
-    }
-    default_obstacle_plugin_config_loaded_ = true;
-    ROS_INFO("Default obstacle_plugin config saved");
-  }
-
   // 減速
   void slowDownMoveBaseSpeed(){
     ROS_INFO("<-- dwa slow downed -->");
-    this->saveDefaultDWAConfigIfNotSaved();
-    auto tmp = default_dwa_config_;
-    tmp.max_vel_trans = slowdown_speed_;
-    tmp.max_vel_x = slowdown_speed_;
-    tmp.acc_lim_x = slowdown_speed_ * 5;
-    bool success = dwa_config_client_.setConfiguration(tmp);
-    if(not success){
-      ROS_ERROR("Could not set DWA configuration!");
-    }
-    now_default_dwa_config_ = false;
+    auto dwa_config = dwa_dynamic_config_.loadDefault();
+    dwa_config.max_vel_trans = slowdown_speed_;
+    dwa_config.max_vel_x = slowdown_speed_;
+    dwa_config.acc_lim_x = slowdown_speed_ * 5;
+    dwa_dynamic_config_.setConfig(dwa_config);
   }
   // 加速
   void speedUpMoveBaseSpeed(){
     ROS_INFO("<-- dwa speed up -->");
-    this->saveDefaultDWAConfigIfNotSaved();
-    auto tmp = default_dwa_config_;
-    tmp.max_vel_trans = speedup_speed_;
-    tmp.max_vel_x = speedup_speed_;
-    tmp.acc_lim_x = speedup_speed_ * 5;
-    bool success = dwa_config_client_.setConfiguration(tmp);
-    if(not success){
-      ROS_ERROR("Could not set DWA configuration!");
-    }
-    now_default_dwa_config_ = false;
+    auto dwa_config = dwa_dynamic_config_.loadDefault();
+    dwa_config.max_vel_trans = speedup_speed_;
+    dwa_config.max_vel_x = speedup_speed_;
+    dwa_config.acc_lim_x = speedup_speed_ * 5;
+    dwa_dynamic_config_.setConfig(dwa_config);
   }
   // 待機列に並ぶためにpath_distance_biasを変更
   void lineUpModeMoveBase(){
     ROS_INFO("<-- dwa line up mode -->");
-    this->saveDefaultDWAConfigIfNotSaved();
-    this->saveDefaultMoveBaseConfigIfNotSaved();
-    this->saveDefaultObstaclePluginConfigIfNotSaved();
+    auto dwa_config = dwa_dynamic_config_.loadDefault();
+    dwa_config.max_vel_trans = slowdown_speed_;
+    dwa_config.max_vel_x = slowdown_speed_;
+    dwa_config.acc_lim_x = slowdown_speed_ * 5;
+    dwa_config.path_distance_bias = lineup_path_distance_bias_;
+    dwa_config.twirling_scale = 0.3;
+    dwa_dynamic_config_.setConfig(dwa_config);
 
-    auto tmp = default_dwa_config_;
-    tmp.max_vel_trans = slowdown_speed_;
-    tmp.max_vel_x = slowdown_speed_;
-    tmp.acc_lim_x = slowdown_speed_ * 5;
-    tmp.path_distance_bias = lineup_path_distance_bias_;
-    tmp.twirling_scale = 0.3;
-    bool success = dwa_config_client_.setConfiguration(tmp);
-    if(not success){
-      ROS_ERROR("Could not set DWA configuration!");
-    }
-    now_default_dwa_config_ = false;
-
-    auto move_base_tmp = default_move_base_config_;
-    move_base_tmp.recovery_behavior_enabled = false; // When lining up, disable recovery.
-    success = move_base_config_client_.setConfiguration(move_base_tmp);
-    if(not success){
-      ROS_ERROR("Could not set move_base configuration!");
-    }
-    now_default_move_base_config_ = false;
+    auto move_base_config = move_base_dynamic_config_.loadDefault();
+    move_base_config.recovery_behavior_enabled = false; // When lining up, disable recovery.
+    move_base_dynamic_config_.setConfig(move_base_config);
 
     // costmap_globalのobstacle_layerをfalseにするやつ(defaultはfalseなので影響ないハズ)
-    auto obstacle_plugin_tmp = default_obstacle_plugin_config_;
-    obstacle_plugin_tmp.enabled = false;
-    success = obstacle_plugin_config_client_.setConfiguration(obstacle_plugin_tmp);
-    if(not success){
-      ROS_ERROR("Could not set obstacle_plugin configuration!");
-    }
-    now_default_obstacle_plugin_config_ = false;
-  }
-
-  void restoreDWAConfigIfNotDefault(){
-    if(!now_default_dwa_config_){
-      ROS_INFO("dwa config reset");
-      bool success = dwa_config_client_.setConfiguration(default_dwa_config_);
-      if(not success){
-        ROS_ERROR("Could not set DWA configuration!");
-      }
-      now_default_dwa_config_ = true;
-
-      /**
-       * 現状,configを戻してまたそれを見に行っているので
-       * ここでspinOnce()して更新している
-       * slowDownMoveBaseSpeed()などで呼んでいるsaveDefaultMoveBaseConfig()
-       * をコンストラクタなどで一度だけ呼べれば以下はいらない(はず)
-       */
-      ros::Duration(0.1).sleep();
-      ros::spinOnce();
-    }
-  }
-
-  void restoreMoveBaseConfigIfNotDefault(){
-    if(!now_default_move_base_config_){
-      ROS_INFO("move base config reset");
-      bool success = move_base_config_client_.setConfiguration(default_move_base_config_);
-      if(not success){
-        ROS_ERROR("Could not set move_base configuration!");
-      }
-      now_default_move_base_config_ = true;
-
-      /**
-       * 現状,configを戻してまたそれを見に行っているので
-       * ここでspinOnce()して更新している
-       * slowDownMoveBaseSpeed()などで呼んでいるsaveDefaultMoveBaseConfig()
-       * をコンストラクタなどで一度だけ呼べれば以下はいらない(はず)
-       */
-      ros::Duration(0.1).sleep();
-      ros::spinOnce();
-    }
-  }
-
-  void restoreObstaclePluginConfigIfNotDefault(){
-    if(!now_default_obstacle_plugin_config_){
-      ROS_INFO("obstacle_plugin config reset");
-      bool success = obstacle_plugin_config_client_.setConfiguration(default_obstacle_plugin_config_);
-      if(not success){
-        ROS_ERROR("Could not set obstacle_plugin configuration!");
-      }
-      now_default_obstacle_plugin_config_ = true;
-
-      /**
-       * 現状,configを戻してまたそれを見に行っているので
-       * ここでspinOnce()して更新している
-       * slowDownMoveBaseSpeed()などで呼んでいるsaveDefaultMoveBaseConfig()
-       * をコンストラクタなどで一度だけ呼べれば以下はいらない(はず)
-       */
-      ros::Duration(0.1).sleep();
-      ros::spinOnce();
-    }
+    auto obstacle_plugin_config = obstacle_plugin_dynamic_config_.loadDefault();
+    obstacle_plugin_config.enabled = false;
+    obstacle_plugin_dynamic_config_.setConfig(obstacle_plugin_config);
   }
 
   // nextwaypointのarea_typeをpublish
@@ -776,19 +712,12 @@ private:
   ros::Publisher next_waypoint_marker_pub_;
   ros::Publisher area_type_pub_;
   ros::ServiceClient detect_target_object_monitor_client_;
-  dynamic_reconfigure::Client<dwa_local_planner::DWAPlannerConfig> dwa_config_client_;
-  dynamic_reconfigure::Client<move_base::MoveBaseConfig> move_base_config_client_;
-  dynamic_reconfigure::Client<costmap_2d::ObstaclePluginConfig> obstacle_plugin_config_client_;
-  dwa_local_planner::DWAPlannerConfig default_dwa_config_;
-  move_base::MoveBaseConfig default_move_base_config_;
-  costmap_2d::ObstaclePluginConfig default_obstacle_plugin_config_;
   bool is_slowdown_ = false;
-  bool now_default_dwa_config_ = true;
-  bool default_dwa_config_loaded_ = false;
-  bool now_default_move_base_config_ = true;
-  bool default_move_base_config_loaded_ = false;
-  bool now_default_obstacle_plugin_config_ = true;
-  bool default_obstacle_plugin_config_loaded_ = false;
+
+  DynamicConfig<dwa_local_planner::DWAPlannerConfig> dwa_dynamic_config_{"/move_base/DWAPlannerROS"};
+  DynamicConfig<move_base::MoveBaseConfig> move_base_dynamic_config_{"/move_base"};
+  DynamicConfig<costmap_2d::ObstaclePluginConfig> obstacle_plugin_dynamic_config_{"/move_base/global_costmap/obstacles_laser"};
+
   int now_area_type_ = -1;
   double slowdown_speed_;
   double speedup_speed_;
